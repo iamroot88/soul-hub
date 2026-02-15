@@ -247,6 +247,136 @@ app.post('/api/souls/:id/observed', (req, res) => {
   }
 });
 
+// GET - Parse markdown files into graph data
+app.get('/api/graph', (req, res) => {
+  const nodes = [];
+  const links = [];
+  const nodeMap = {};
+
+  // Scan workspace for MD files
+  const workspaceDir = process.env.WORKSPACE_DIR || path.join(__dirname, '../..');
+  const mdDirs = [workspaceDir, MEMORY_DIR, DATA_DIR];
+
+  function addNode(id, label, type, size, meta) {
+    if (!nodeMap[id]) {
+      const node = { id, label, type, size: size || 8, meta: meta || {} };
+      nodes.push(node);
+      nodeMap[id] = node;
+    }
+    return nodeMap[id];
+  }
+
+  function addLink(source, target, type) {
+    links.push({ source, target, type: type || 'reference' });
+  }
+
+  // Parse MD files
+  function scanDir(dir, depth) {
+    if (depth > 2) return;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries.forEach(entry => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          scanDir(fullPath, depth + 1);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          const relativePath = path.relative(workspaceDir, fullPath).replace(/\\/g, '/');
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const lines = content.split('\n');
+
+          // Create file node
+          const fileId = relativePath;
+          const fileSize = entry.name === 'SOUL.md' ? 20 : 
+                          entry.name === 'MEMORY.md' ? 18 :
+                          entry.name === 'AGENTS.md' ? 16 :
+                          entry.name === 'IDENTITY.md' ? 14 : 10;
+          const fileType = entry.name.includes('SOUL') ? 'soul' :
+                          entry.name.includes('MEMORY') ? 'memory' :
+                          entry.name.includes('IDENTITY') ? 'identity' :
+                          entry.name.includes('AGENTS') ? 'agents' :
+                          entry.name.includes('HEARTBEAT') ? 'config' :
+                          entry.name.includes('TOOLS') ? 'tools' :
+                          entry.name.includes('USER') ? 'user' : 'file';
+
+          addNode(fileId, entry.name, fileType, fileSize, {
+            path: relativePath,
+            size: content.length,
+            lines: lines.length,
+            modified: fs.statSync(fullPath).mtime.toISOString(),
+            preview: content.substring(0, 300)
+          });
+
+          // Extract headers as sub-nodes
+          lines.forEach((line, idx) => {
+            const h2Match = line.match(/^## (.+)/);
+            if (h2Match) {
+              const sectionId = `${fileId}#${h2Match[1].trim()}`;
+              addNode(sectionId, h2Match[1].trim(), 'section', 6, { parent: fileId });
+              addLink(fileId, sectionId, 'contains');
+            }
+          });
+
+          // Extract cross-references to other MD files
+          const refPattern = /(?:read|load|check|update|see|from)\s+[`"']?(\w+\.md)[`"']?/gi;
+          let match;
+          while ((match = refPattern.exec(content)) !== null) {
+            const refFile = match[1];
+            // Find if this file exists in our nodes
+            const refNode = Object.keys(nodeMap).find(k => k.endsWith(refFile));
+            if (refNode) {
+              addLink(fileId, refNode, 'references');
+            }
+          }
+
+          // Extract mentions of bot names
+          const botNames = ['miniaipc', 'razertw', 'whitetwr', 'whitetwrwsl'];
+          botNames.forEach(bot => {
+            if (content.toLowerCase().includes(bot)) {
+              const botNodeId = `bot:${bot}`;
+              addNode(botNodeId, bot.toUpperCase(), 'bot', 25, { botId: bot });
+              addLink(fileId, botNodeId, 'mentions');
+            }
+          });
+        }
+      });
+    } catch (err) {
+      // Directory might not exist, skip
+    }
+  }
+
+  mdDirs.forEach(dir => scanDir(dir, 0));
+
+  // Also scan soul-maps JSON as nodes
+  try {
+    const soulFiles = fs.readdirSync(DATA_DIR);
+    soulFiles.filter(f => f.endsWith('.json') && f !== 'schema.json' && f !== 'bootstrap-data.json').forEach(file => {
+      const filePath = path.join(DATA_DIR, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(content);
+      const botId = data.meta?.botId || file.replace('.json', '');
+      const jsonNodeId = `soul-maps/${file}`;
+
+      addNode(jsonNodeId, file, 'soul-json', 12, {
+        path: `soul-maps/${file}`,
+        botId: botId,
+        preview: `Soul map for ${botId}: ${(data.declared?.traits || []).slice(0, 3).join(', ')}`
+      });
+
+      // Link to bot node
+      const botNodeId = `bot:${botId}`;
+      addNode(botNodeId, botId.toUpperCase(), 'bot', 25, { botId });
+      addLink(jsonNodeId, botNodeId, 'defines');
+    });
+  } catch (err) {}
+
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    stats: { nodes: nodes.length, links: links.length },
+    data: { nodes, links }
+  });
+});
+
 // GET - Health check
 app.get('/api/health', (req, res) => {
   const souls = parseSoulMaps();

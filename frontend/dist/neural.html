@@ -621,6 +621,23 @@
         }
       }
 
+      // MD file detail
+      if (node.meta?.path) {
+        content += `<div class="detail-section">
+          <div class="detail-section-title">File Info</div>
+          <div style="font-size:12px; color:#64748b; margin-bottom:4px;">Path: ${node.meta.path}</div>
+          ${node.meta.size ? `<div style="font-size:12px; color:#64748b; margin-bottom:4px;">Size: ${(node.meta.size / 1024).toFixed(1)} KB</div>` : ''}
+          ${node.meta.lines ? `<div style="font-size:12px; color:#64748b; margin-bottom:4px;">Lines: ${node.meta.lines}</div>` : ''}
+          ${node.meta.modified ? `<div style="font-size:12px; color:#64748b;">Modified: ${new Date(node.meta.modified).toLocaleString()}</div>` : ''}
+        </div>`;
+        if (node.meta.preview) {
+          content += `<div class="detail-section">
+            <div class="detail-section-title">Content Preview</div>
+            <div class="detail-preview">${node.meta.preview.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          </div>`;
+        }
+      }
+
       // Connections
       content += `
         <div class="detail-section">
@@ -636,16 +653,80 @@
       panel.innerHTML = content;
     }
 
+    // Merge soul graph + MD file graph
+    function mergeGraphs(soulGraph, mdGraph) {
+      const nodeMap = {};
+      const allNodes = [];
+      const allLinks = [];
+
+      // Add soul nodes first
+      soulGraph.nodes.forEach(n => {
+        if (!nodeMap[n.id]) { nodeMap[n.id] = n; allNodes.push(n); }
+      });
+
+      // Add MD file nodes
+      if (mdGraph && mdGraph.nodes) {
+        mdGraph.nodes.forEach(n => {
+          if (!nodeMap[n.id]) { 
+            // Map MD types to our color types
+            const typeMap = {
+              'soul': 'trait', 'memory': 'value', 'identity': 'behavior',
+              'agents': 'skill', 'config': 'role', 'tools': 'skill',
+              'user': 'behavior', 'file': 'core', 'section': 'core',
+              'bot': 'bot', 'soul-json': 'skill'
+            };
+            n.type = typeMap[n.type] || n.type;
+            if (n.type === 'bot' && nodeMap[n.meta?.botId]) {
+              // Skip duplicate bot nodes, link instead
+              return;
+            }
+            nodeMap[n.id] = n; 
+            allNodes.push(n); 
+          }
+        });
+      }
+
+      // Combine links
+      soulGraph.links.forEach(l => allLinks.push(l));
+      if (mdGraph && mdGraph.links) {
+        mdGraph.links.forEach(l => {
+          // Resolve bot references
+          if (typeof l.source === 'string' && l.source.startsWith('bot:')) {
+            l.source = l.source.replace('bot:', '');
+          }
+          if (typeof l.target === 'string' && l.target.startsWith('bot:')) {
+            l.target = l.target.replace('bot:', '');
+          }
+          if (nodeMap[l.source] && nodeMap[l.target]) {
+            allLinks.push(l);
+          }
+        });
+      }
+
+      return { nodes: allNodes, links: allLinks };
+    }
+
     // Fetch and render
     async function init() {
       try {
-        const res = await fetch('/api/souls');
-        const json = await res.json();
-        const graphData = buildGraph(json.data || {});
-        renderGraph(graphData);
+        const [soulsRes, graphRes] = await Promise.all([
+          fetch('/api/souls'),
+          fetch('/api/graph').catch(() => null)
+        ]);
+        const soulsJson = await soulsRes.json();
+        const soulGraph = buildGraph(soulsJson.data || {});
+        
+        let mdGraph = null;
+        if (graphRes && graphRes.ok) {
+          const graphJson = await graphRes.json();
+          mdGraph = graphJson.data;
+        }
+
+        const mergedGraph = mergeGraphs(soulGraph, mdGraph);
+        renderGraph(mergedGraph);
       } catch (err) {
-        console.error('Failed to load souls:', err);
-        document.getElementById('detail').innerHTML = '<div class="detail-empty">Failed to load souls. Is the API running?</div>';
+        console.error('Failed to load data:', err);
+        document.getElementById('detail').innerHTML = '<div class="detail-empty">Failed to load data. Is the API running?</div>';
       }
     }
 
