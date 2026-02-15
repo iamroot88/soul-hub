@@ -33,6 +33,78 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || (
   }
 });
 
+// ============================================================
+// Persistence Layer for External Bot Data
+// ============================================================
+// Render's filesystem is ephemeral — data written at runtime is lost on redeploy.
+// This layer keeps an in-memory cache of all soul data and writes external
+// (API-submitted) souls to an external-souls.json backup file.
+// On startup, bundled JSON files are loaded first, then external-souls.json
+// overlays any API-submitted data that was saved before the last deploy.
+const EXTERNAL_SOULS_PATH = path.join(DATA_DIR, 'external-souls.json');
+const soulCache = {}; // In-memory cache of ALL souls
+
+function loadExternalSouls() {
+  try {
+    if (fs.existsSync(EXTERNAL_SOULS_PATH)) {
+      const data = JSON.parse(fs.readFileSync(EXTERNAL_SOULS_PATH, 'utf-8'));
+      return data || {};
+    }
+  } catch (err) {
+    console.error('Error loading external-souls.json:', err);
+  }
+  return {};
+}
+
+function saveExternalSouls(externals) {
+  try {
+    fs.writeFileSync(EXTERNAL_SOULS_PATH, JSON.stringify(externals, null, 2));
+  } catch (err) {
+    console.error('Error saving external-souls.json:', err);
+  }
+}
+
+// Track which souls came from API vs bundled files
+const externalSouls = loadExternalSouls();
+
+function initSoulCache() {
+  // 1. Load bundled JSON files first
+  try {
+    const files = fs.readdirSync(DATA_DIR);
+    files.filter(f => f.endsWith('.json') && !['schema.json', 'bootstrap-data.json', 'external-souls.json'].includes(f)).forEach(file => {
+      const filePath = path.join(DATA_DIR, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(content);
+      const soulId = data.meta?.botId || file.replace('.json', '');
+      soulCache[soulId] = {
+        ...data,
+        _source: 'bundled'
+      };
+    });
+  } catch (err) {
+    console.error('Error loading bundled souls:', err);
+  }
+
+  // 2. Overlay external souls (API-submitted data survives in external-souls.json)
+  for (const [id, data] of Object.entries(externalSouls)) {
+    soulCache[id] = { ...data, _source: 'external' };
+    // Also write individual JSON files so parseSoulMaps works
+    const filePath = path.join(DATA_DIR, `${id}.json`);
+    if (!fs.existsSync(filePath)) {
+      try {
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+        console.log(`🔄 Restored external soul from backup: ${id}`);
+      } catch (err) {
+        console.error(`Error restoring soul ${id}:`, err);
+      }
+    }
+  }
+
+  console.log(`📦 Soul cache initialized: ${Object.keys(soulCache).length} souls (${Object.keys(externalSouls).length} external)`);
+}
+
+initSoulCache();
+
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
@@ -56,7 +128,7 @@ function parseSoulMaps() {
 
   try {
     const files = fs.readdirSync(DATA_DIR);
-    files.filter(f => f.endsWith('.json') && !['schema.json', 'bootstrap-data.json'].includes(f)).forEach(file => {
+    files.filter(f => f.endsWith('.json') && !['schema.json', 'bootstrap-data.json', 'external-souls.json'].includes(f)).forEach(file => {
       const filePath = path.join(DATA_DIR, file);
       const content = fs.readFileSync(filePath, 'utf-8');
       const data = JSON.parse(content);
@@ -170,7 +242,15 @@ app.post('/api/souls/:id', (req, res) => {
   const filePath = path.join(DATA_DIR, `${id}.json`);
   try {
     fs.writeFileSync(filePath, JSON.stringify(soulData, null, 2));
-    console.log(`🤖 Soul registered/updated: ${id} (from ${soulData.meta.source})`);
+    
+    // Persist to external-souls.json backup (survives redeploys if committed)
+    externalSouls[id] = soulData;
+    saveExternalSouls(externalSouls);
+    
+    // Update in-memory cache
+    soulCache[id] = { ...soulData, _source: 'external' };
+    
+    console.log(`🤖 Soul registered/updated: ${id} (from ${soulData.meta.source}) [persisted to backup]`);
     
     // Broadcast update
     broadcastUpdate();
@@ -178,6 +258,7 @@ app.post('/api/souls/:id', (req, res) => {
     res.json({
       status: 'ok',
       message: `Soul '${id}' registered successfully`,
+      persisted: true,
       timestamp: new Date().toISOString()
     });
   } catch (err) {
@@ -205,7 +286,10 @@ app.put('/api/souls/:id', (req, res) => {
     merged.meta.lastUpdated = new Date().toISOString();
 
     fs.writeFileSync(filePath, JSON.stringify(merged, null, 2));
-    console.log(`📝 Soul updated: ${id}`);
+    externalSouls[id] = merged;
+    saveExternalSouls(externalSouls);
+    soulCache[id] = { ...merged, _source: 'external' };
+    console.log(`📝 Soul updated: ${id} [persisted]`);
     broadcastUpdate();
 
     res.json({ status: 'ok', message: `Soul '${id}' updated`, data: merged });
@@ -226,7 +310,10 @@ app.delete('/api/souls/:id', (req, res) => {
 
   try {
     fs.unlinkSync(filePath);
-    console.log(`🗑️ Soul deleted: ${id}`);
+    delete externalSouls[id];
+    saveExternalSouls(externalSouls);
+    delete soulCache[id];
+    console.log(`🗑️ Soul deleted: ${id} [removed from backup]`);
     broadcastUpdate();
     res.json({ status: 'ok', message: `Soul '${id}' deleted` });
   } catch (err) {
@@ -251,7 +338,10 @@ app.post('/api/souls/:id/observed', (req, res) => {
     existing.meta.lastObserved = new Date().toISOString();
 
     fs.writeFileSync(filePath, JSON.stringify(existing, null, 2));
-    console.log(`👁️ Observed data updated for: ${id}`);
+    externalSouls[id] = existing;
+    saveExternalSouls(externalSouls);
+    soulCache[id] = { ...existing, _source: 'external' };
+    console.log(`👁️ Observed data updated for: ${id} [persisted]`);
     broadcastUpdate();
 
     res.json({ status: 'ok', message: `Observed data for '${id}' updated` });
@@ -397,8 +487,10 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: process.uptime(),
     souls: Object.keys(souls).length,
+    externalSouls: Object.keys(externalSouls).length,
+    cachedSouls: Object.keys(soulCache).length,
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.1.0'
   });
 });
 
