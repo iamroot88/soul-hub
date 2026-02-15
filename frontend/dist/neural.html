@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soul Hub — Neural Map</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0c14;
+      color: #e2e8f0;
+      font-family: 'Space Grotesk', sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: rgba(10, 12, 20, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topbar-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .topbar-nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .topbar-nav a {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #94a3b8;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .topbar-nav a:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+    .topbar-nav a.active { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
+
+    .topbar-stats {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat { display: flex; align-items: center; gap: 6px; }
+    .stat-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .stat-dot.red { background: #ef4444; }
+    .stat-dot.green { background: #22c55e; }
+    .stat-dot.yellow { background: #eab308; }
+    .stat-dot.blue { background: #3b82f6; }
+
+    /* Graph container */
+    #graph {
+      position: fixed;
+      top: 48px;
+      left: 0;
+      right: 300px;
+      bottom: 0;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Grid background */
+    .grid-bg {
+      position: fixed;
+      top: 48px;
+      left: 0;
+      right: 300px;
+      bottom: 0;
+      background-image: 
+        radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.03) 0%, transparent 70%),
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Detail panel */
+    .detail {
+      position: fixed;
+      top: 48px;
+      right: 0;
+      width: 300px;
+      bottom: 0;
+      background: rgba(15, 17, 25, 0.95);
+      backdrop-filter: blur(16px);
+      border-left: 1px solid rgba(255,255,255,0.06);
+      padding: 20px;
+      overflow-y: auto;
+      z-index: 50;
+    }
+
+    .detail-empty {
+      color: #64748b;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .detail-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .detail-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .detail-type {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .detail-section {
+      margin-top: 16px;
+    }
+
+    .detail-section-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .detail-item {
+      padding: 6px 0;
+      font-size: 13px;
+      color: #94a3b8;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .detail-item::before {
+      content: '←';
+      color: #06b6d4;
+      font-size: 11px;
+    }
+
+    .detail-preview {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: #94a3b8;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1.6;
+    }
+
+    .connections-count {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* Legend */
+    .legend {
+      position: fixed;
+      bottom: 16px;
+      right: 316px;
+      display: flex;
+      gap: 16px;
+      background: rgba(10, 12, 20, 0.8);
+      backdrop-filter: blur(8px);
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.06);
+      z-index: 50;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    /* Node labels */
+    .node-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      fill: #e2e8f0;
+      text-anchor: middle;
+      pointer-events: none;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    .node-label-large {
+      font-size: 13px;
+      letter-spacing: 2px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-title">🧠 Soul Hub</span>
+      <div class="topbar-nav">
+        <a href="/">Dashboard</a>
+        <a href="/neural.html" class="active">Neural Map</a>
+      </div>
+    </div>
+    <div class="topbar-stats">
+      <div class="stat"><span class="stat-dot green"></span> <span id="soul-count">0</span> Souls</div>
+      <div class="stat"><span class="stat-dot blue"></span> <span id="node-count">0</span> Nodes</div>
+      <div class="stat"><span class="stat-dot yellow"></span> <span id="link-count">0</span> Links</div>
+      <div class="stat" style="color: #64748b;" id="timer">00:00:00</div>
+    </div>
+  </div>
+
+  <!-- Grid Background -->
+  <div class="grid-bg"></div>
+
+  <!-- Graph -->
+  <div id="graph"></div>
+
+  <!-- Detail Panel -->
+  <div class="detail" id="detail">
+    <div class="detail-empty">Click a node to inspect</div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background: #06b6d4;"></div> Bot</div>
+    <div class="legend-item"><div class="legend-dot" style="background: #22c55e;"></div> Trait</div>
+    <div class="legend-item"><div class="legend-dot" style="background: #a855f7;"></div> Skill</div>
+    <div class="legend-item"><div class="legend-dot" style="background: #eab308;"></div> Value</div>
+    <div class="legend-item"><div class="legend-dot" style="background: #ec4899;"></div> Behavior</div>
+    <div class="legend-item"><div class="legend-dot" style="background: #f97316;"></div> Role</div>
+  </div>
+
+  <script>
+    // Timer
+    let startTime = Date.now();
+    setInterval(() => {
+      const e = Math.floor((Date.now() - startTime) / 1000);
+      document.getElementById('timer').textContent = 
+        `${String(Math.floor(e/3600)).padStart(2,'0')}:${String(Math.floor((e%3600)/60)).padStart(2,'0')}:${String(e%60).padStart(2,'0')}`;
+    }, 1000);
+
+    // Color map
+    const colors = {
+      bot: '#06b6d4',
+      trait: '#22c55e',
+      skill: '#a855f7',
+      value: '#eab308',
+      behavior: '#ec4899',
+      role: '#f97316',
+      core: '#3b82f6'
+    };
+
+    const glowColors = {
+      bot: 'rgba(6, 182, 212, 0.4)',
+      trait: 'rgba(34, 197, 94, 0.3)',
+      skill: 'rgba(168, 85, 247, 0.3)',
+      value: 'rgba(234, 179, 8, 0.3)',
+      behavior: 'rgba(236, 72, 153, 0.3)',
+      role: 'rgba(249, 115, 22, 0.3)',
+      core: 'rgba(59, 130, 246, 0.3)'
+    };
+
+    const emojis = {
+      miniaipc: '🧠', razertw: '🔍', whitetwr: '❄️', whitetwrwsl: '🐧'
+    };
+
+    // Build graph from soul data
+    function buildGraph(soulsData) {
+      const nodes = [];
+      const links = [];
+      const nodeMap = {};
+
+      // Create bot nodes
+      Object.entries(soulsData).forEach(([id, soul], idx) => {
+        const botNode = {
+          id: id,
+          label: id.toUpperCase(),
+          type: 'bot',
+          size: 35,
+          data: soul,
+          emoji: emojis[id] || '🤖',
+          fx: null, fy: null // let simulation position them
+        };
+        nodes.push(botNode);
+        nodeMap[id] = botNode;
+
+        // Traits
+        const traits = soul.declared?.traits || soul.traits?.declared || [];
+        traits.forEach((trait, i) => {
+          const traitName = typeof trait === 'string' ? trait.split('(')[0].trim() : trait;
+          const traitId = `${id}-trait-${i}`;
+          nodes.push({ id: traitId, label: traitName, type: 'trait', size: 8, parent: id });
+          links.push({ source: id, target: traitId, type: 'trait' });
+        });
+
+        // Skills
+        const skills = soul.declared?.skills || {};
+        if (typeof skills === 'object' && !Array.isArray(skills)) {
+          Object.entries(skills).forEach(([cat, items], ci) => {
+            const catId = `${id}-skill-${cat}`;
+            nodes.push({ id: catId, label: cat.replace(/_/g, ' ').toUpperCase(), type: 'skill', size: 16, parent: id });
+            links.push({ source: id, target: catId, type: 'skill' });
+
+            if (Array.isArray(items)) {
+              items.forEach((item, ii) => {
+                const itemId = `${id}-skill-${cat}-${ii}`;
+                nodes.push({ id: itemId, label: item, type: 'skill', size: 5, parent: catId });
+                links.push({ source: catId, target: itemId, type: 'skill' });
+              });
+            }
+          });
+        }
+
+        // Values
+        const values = soul.declared?.values || [];
+        values.forEach((val, i) => {
+          const valId = `${id}-value-${i}`;
+          nodes.push({ id: valId, label: val, type: 'value', size: 8, parent: id });
+          links.push({ source: id, target: valId, type: 'value' });
+        });
+
+        // Behaviors
+        const behaviors = soul.declared?.behaviors || {};
+        if (typeof behaviors === 'object') {
+          Object.entries(behaviors).forEach(([key, val], i) => {
+            const behId = `${id}-behavior-${i}`;
+            nodes.push({ id: behId, label: key.toUpperCase(), type: 'behavior', size: 10, parent: id });
+            links.push({ source: id, target: behId, type: 'behavior' });
+          });
+        }
+
+        // Role
+        if (soul.meta?.role) {
+          const roleId = `${id}-role`;
+          nodes.push({ id: roleId, label: soul.meta.role, type: 'role', size: 12, parent: id });
+          links.push({ source: id, target: roleId, type: 'role' });
+        }
+      });
+
+      // Cross-links between bots (shared traits)
+      const botIds = Object.keys(soulsData);
+      for (let i = 0; i < botIds.length; i++) {
+        for (let j = i + 1; j < botIds.length; j++) {
+          links.push({ source: botIds[i], target: botIds[j], type: 'core', strength: 0.02 });
+        }
+      }
+
+      return { nodes, links };
+    }
+
+    // Render D3 force graph
+    function renderGraph(graphData) {
+      const container = document.getElementById('graph');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      // Clear
+      d3.select('#graph').selectAll('*').remove();
+
+      const svg = d3.select('#graph')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+      // Defs for glow
+      const defs = svg.append('defs');
+
+      Object.entries(colors).forEach(([type, color]) => {
+        const filter = defs.append('filter')
+          .attr('id', `glow-${type}`)
+          .attr('x', '-50%').attr('y', '-50%')
+          .attr('width', '200%').attr('height', '200%');
+        filter.append('feGaussianBlur')
+          .attr('stdDeviation', type === 'bot' ? 8 : 4)
+          .attr('result', 'blur');
+        filter.append('feMerge')
+          .selectAll('feMergeNode')
+          .data(['blur', 'SourceGraphic'])
+          .enter().append('feMergeNode')
+          .attr('in', d => d);
+      });
+
+      // Zoom
+      const g = svg.append('g');
+      const zoom = d3.zoom()
+        .scaleExtent([0.2, 4])
+        .on('zoom', (event) => g.attr('transform', event.transform));
+      svg.call(zoom);
+
+      // Center initially
+      svg.call(zoom.transform, d3.zoomIdentity.translate(width/2, height/2).scale(0.8));
+
+      // Simulation
+      const simulation = d3.forceSimulation(graphData.nodes)
+        .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(d => {
+          if (d.type === 'core') return 250;
+          if (d.source.type === 'bot' || d.target.type === 'bot') return 120;
+          return 60;
+        }).strength(d => d.type === 'core' ? 0.02 : 0.3))
+        .force('charge', d3.forceManyBody().strength(d => d.type === 'bot' ? -400 : -60))
+        .force('center', d3.forceCenter(0, 0))
+        .force('collision', d3.forceCollide().radius(d => d.size + 5));
+
+      // Links
+      const link = g.append('g')
+        .selectAll('line')
+        .data(graphData.links)
+        .enter().append('line')
+        .attr('stroke', d => colors[d.type] || '#334155')
+        .attr('stroke-opacity', d => d.type === 'core' ? 0.15 : 0.3)
+        .attr('stroke-width', d => d.type === 'core' ? 1 : 0.8)
+        .attr('stroke-dasharray', d => d.type === 'core' ? '8,4' : '4,3');
+
+      // Nodes
+      const node = g.append('g')
+        .selectAll('g')
+        .data(graphData.nodes)
+        .enter().append('g')
+        .attr('cursor', 'pointer')
+        .call(d3.drag()
+          .on('start', (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on('end', (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            if (d.type !== 'bot') { d.fx = null; d.fy = null; }
+          })
+        )
+        .on('click', (event, d) => showNodeDetail(d, graphData));
+
+      // Node circles
+      node.append('circle')
+        .attr('r', d => d.size)
+        .attr('fill', d => colors[d.type] || '#64748b')
+        .attr('fill-opacity', d => d.type === 'bot' ? 0.9 : 0.7)
+        .attr('stroke', d => colors[d.type] || '#64748b')
+        .attr('stroke-width', d => d.type === 'bot' ? 2 : 0.5)
+        .attr('stroke-opacity', 0.5)
+        .attr('filter', d => `url(#glow-${d.type})`);
+
+      // Inner glow for bot nodes
+      node.filter(d => d.type === 'bot')
+        .append('circle')
+        .attr('r', d => d.size * 0.6)
+        .attr('fill', 'white')
+        .attr('fill-opacity', 0.15);
+
+      // Labels
+      node.filter(d => d.size >= 10)
+        .append('text')
+        .attr('class', d => d.type === 'bot' ? 'node-label node-label-large' : 'node-label')
+        .attr('dy', d => d.type === 'bot' ? d.size + 16 : d.size + 12)
+        .text(d => d.label.length > 20 ? d.label.substring(0, 18) + '…' : d.label);
+
+      // Emoji for bots
+      node.filter(d => d.type === 'bot')
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('font-size', d => d.size * 0.7)
+        .attr('pointer-events', 'none')
+        .text(d => d.emoji || '🤖');
+
+      // Update stats
+      document.getElementById('soul-count').textContent = graphData.nodes.filter(n => n.type === 'bot').length;
+      document.getElementById('node-count').textContent = graphData.nodes.length;
+      document.getElementById('link-count').textContent = graphData.links.length;
+
+      // Tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
+
+      // Hover effects
+      node.on('mouseover', function(event, d) {
+        d3.select(this).select('circle')
+          .transition().duration(200)
+          .attr('r', d.size * 1.3)
+          .attr('fill-opacity', 1);
+
+        // Highlight connected links
+        link.transition().duration(200)
+          .attr('stroke-opacity', l => 
+            (l.source.id === d.id || l.target.id === d.id) ? 0.8 : 0.05
+          )
+          .attr('stroke-width', l =>
+            (l.source.id === d.id || l.target.id === d.id) ? 2 : 0.5
+          );
+      })
+      .on('mouseout', function(event, d) {
+        d3.select(this).select('circle')
+          .transition().duration(200)
+          .attr('r', d.size)
+          .attr('fill-opacity', d.type === 'bot' ? 0.9 : 0.7);
+
+        link.transition().duration(200)
+          .attr('stroke-opacity', l => l.type === 'core' ? 0.15 : 0.3)
+          .attr('stroke-width', l => l.type === 'core' ? 1 : 0.8);
+      });
+    }
+
+    // Show detail panel
+    function showNodeDetail(node, graphData) {
+      const panel = document.getElementById('detail');
+      const connections = graphData.links.filter(l => 
+        l.source.id === node.id || l.target.id === node.id
+      );
+      const connectedNodes = connections.map(l => 
+        l.source.id === node.id ? l.target : l.source
+      );
+
+      const colorStyle = `background: ${colors[node.type]}22; border: 1px solid ${colors[node.type]}44;`;
+
+      let content = `
+        <div class="detail-header">
+          <div class="detail-icon" style="${colorStyle}">
+            ${node.emoji || (node.type === 'bot' ? '🤖' : '●')}
+          </div>
+          <div>
+            <div class="detail-name" style="color: ${colors[node.type]}">${node.label}</div>
+            <div class="detail-type">${node.type}</div>
+          </div>
+        </div>
+      `;
+
+      // Bot detail
+      if (node.type === 'bot' && node.data) {
+        const soul = node.data;
+        if (soul.declared?.core) {
+          content += `<div class="detail-preview">${soul.declared.core}</div>`;
+        }
+        if (soul.meta?.role) {
+          content += `<div class="detail-section">
+            <div class="detail-section-title">Role</div>
+            <div style="font-size:13px; color:#94a3b8;">${soul.meta.role}</div>
+          </div>`;
+        }
+      }
+
+      // Connections
+      content += `
+        <div class="detail-section">
+          <div class="detail-section-title">Connections (${connections.length})</div>
+          ${connectedNodes.map(n => `
+            <div class="detail-item" style="cursor:pointer;" onclick="document.querySelectorAll('circle').forEach(c => { if(c.__data__?.id === '${n.id}') c.dispatchEvent(new Event('click')) })">
+              <span style="color:${colors[n.type]};">●</span> ${n.label || n.id}
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      panel.innerHTML = content;
+    }
+
+    // Fetch and render
+    async function init() {
+      try {
+        const res = await fetch('/api/souls');
+        const json = await res.json();
+        const graphData = buildGraph(json.data || {});
+        renderGraph(graphData);
+      } catch (err) {
+        console.error('Failed to load souls:', err);
+        document.getElementById('detail').innerHTML = '<div class="detail-empty">Failed to load souls. Is the API running?</div>';
+      }
+    }
+
+    // WebSocket live updates
+    try {
+      const ws = new WebSocket(`ws://${location.host}/ws`);
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'update') {
+          const graphData = buildGraph(msg.data || {});
+          renderGraph(graphData);
+        }
+      };
+    } catch (err) {}
+
+    // Handle resize
+    window.addEventListener('resize', init);
+
+    // Go
+    init();
+  </script>
+</body>
+</html>
