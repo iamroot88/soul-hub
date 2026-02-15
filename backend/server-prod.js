@@ -9,9 +9,22 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Data directory - use env var for Render, fallback to local
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../soul-maps');
-const MEMORY_DIR = process.env.MEMORY_DIR || path.join(__dirname, '../../memory');
+// Data directory - use bundled data/ dir for Render, fallback to local workspace
+const DATA_DIR = process.env.DATA_DIR || (
+  fs.existsSync(path.join(__dirname, '../data/soul-maps')) 
+    ? path.join(__dirname, '../data/soul-maps')
+    : path.join(__dirname, '../../soul-maps')
+);
+const MEMORY_DIR = process.env.MEMORY_DIR || (
+  fs.existsSync(path.join(__dirname, '../data/memory'))
+    ? path.join(__dirname, '../data/memory')
+    : path.join(__dirname, '../../memory')
+);
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || (
+  fs.existsSync(path.join(__dirname, '../data/workspace'))
+    ? path.join(__dirname, '../data/workspace')
+    : path.join(__dirname, '../..')
+);
 
 // Ensure data directories exist
 [DATA_DIR, MEMORY_DIR].forEach(dir => {
@@ -254,8 +267,8 @@ app.get('/api/graph', (req, res) => {
   const nodeMap = {};
 
   // Scan workspace for MD files
-  const workspaceDir = process.env.WORKSPACE_DIR || path.join(__dirname, '../..');
-  const mdDirs = [workspaceDir, MEMORY_DIR, DATA_DIR];
+  const workspaceDir = WORKSPACE_DIR;
+  const mdDirs = [workspaceDir, MEMORY_DIR];
 
   function addNode(id, label, type, size, meta) {
     if (!nodeMap[id]) {

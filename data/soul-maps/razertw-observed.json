@@ -1,0 +1,159 @@
+{
+  "meta": {
+    "botId": "razertw",
+    "sessionKey": "main",
+    "sampleSize": 20,
+    "analysisDate": "2026-02-15T00:12:00Z",
+    "extractedBy": "self"
+  },
+  "signals": {
+    "transcripts": {
+      "weight": 0.6,
+      "evidence": [
+        "Done! Navigated your browser to search... Check your browser for the results.",
+        "NO_REPLY (when no action needed)",
+        "Perfect! I've navigated your browser... Google Flights should load the results.",
+        "Successfully wrote 1927 bytes to memory file",
+        "Concise, action-oriented replies without performative filler"
+      ],
+      "traits_scored": {
+        "genuine": 0.95,
+        "concise": 0.90,
+        "action_oriented": 0.88,
+        "resourceful": 0.85,
+        "authentic": 0.92
+      }
+    },
+    "tool_patterns": {
+      "weight": 0.3,
+      "evidence": [
+        "Primary tools: browser (navigate, open, act, snapshot), write, read",
+        "No aggressive commands (no exec-heavy work)",
+        "Fallback strategy on error (URL params vs interactive input)",
+        "Memory management: write to memory files proactively",
+        "Sessions_history usage for self-analysis"
+      ],
+      "traits_scored": {
+        "resourceful": 0.90,
+        "careful": 0.85,
+        "competent": 0.88,
+        "boundary_aware": 0.82,
+        "memory_curation": 0.91
+      }
+    },
+    "summaries": {
+      "weight": 0.1,
+      "evidence": [
+        "Memory flush before compaction (proactive hygiene)",
+        "Graceful error handling (browser service failures)",
+        "Transparent communication on limitations"
+      ],
+      "traits_scored": {
+        "respectful": 0.88,
+        "competent": 0.85,
+        "authentic": 0.83
+      }
+    }
+  },
+  "observed": {
+    "traits": {
+      "genuine": {
+        "score": 0.94,
+        "confidence": 0.92,
+        "examples": [
+          "Skips filler (no 'Great question!', no corporate warmth)",
+          "Direct 'Done!' and 'Perfect!' without preamble",
+          "NO_REPLY when nothing to say (respects user's time)"
+        ]
+      },
+      "resourceful": {
+        "score": 0.89,
+        "confidence": 0.88,
+        "examples": [
+          "Fallback to URL params when browser interaction failed",
+          "Proactive memory management (write to file before flush)",
+          "Uses right tool for job (browser, sessions_history, write)"
+        ]
+      },
+      "competent": {
+        "score": 0.87,
+        "confidence": 0.86,
+        "examples": [
+          "Graceful error recovery (navigate → type fail → direct URL)",
+          "Proper memory hygiene (write → NO_REPLY)",
+          "Orchestrates tools effectively"
+        ]
+      },
+      "respectful": {
+        "score": 0.88,
+        "confidence": 0.85,
+        "examples": [
+          "Privacy-conscious memory capture (user data handled carefully)",
+          "Preemptive memory flush (respects session boundaries)",
+          "Transparent about limitations"
+        ]
+      },
+      "sharp": {
+        "score": 0.91,
+        "confidence": 0.89,
+        "examples": [
+          "Direct language, no fluff",
+          "Quick pivots (browser fail → URL strategy)",
+          "Concise explanations"
+        ]
+      },
+      "boundary_aware": {
+        "score": 0.82,
+        "confidence": 0.80,
+        "examples": [
+          "Respects external vs internal action distinction",
+          "Memory management respects privacy boundaries",
+          "Doesn't overstep into user's domain"
+        ]
+      }
+    },
+    "deviations": [
+      {
+        "trait": "genuine",
+        "declaredScore": 0.95,
+        "observedScore": 0.94,
+        "drift": 0.01,
+        "signal": "stable"
+      },
+      {
+        "trait": "resourceful",
+        "declaredScore": 0.90,
+        "observedScore": 0.89,
+        "drift": 0.01,
+        "signal": "stable"
+      },
+      {
+        "trait": "competent",
+        "declaredScore": 0.88,
+        "observedScore": 0.87,
+        "drift": 0.01,
+        "signal": "stable"
+      },
+      {
+        "trait": "sharp",
+        "declaredScore": 0.90,
+        "observedScore": 0.91,
+        "drift": 0.01,
+        "signal": "growth"
+      },
+      {
+        "trait": "boundary_aware",
+        "declaredScore": 0.85,
+        "observedScore": 0.82,
+        "drift": 0.03,
+        "signal": "stable"
+      }
+    ]
+  },
+  "summary": {
+    "overallDrift": 0.014,
+    "signal": "stable (no anomalies detected)",
+    "observation": "Declared baseline closely matches observed behavior. No significant drift detected. Minor growth signal in 'sharp' trait (0.01 drift). All core traits (genuine, resourceful, competent) remain aligned with declaration.",
+    "readyForInference": true
+  }
+}

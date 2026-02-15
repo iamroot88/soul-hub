@@ -11,3 +11,5 @@ services:
         value: /opt/render/project/src/data/soul-maps
       - key: MEMORY_DIR
         value: /opt/render/project/src/data/memory
+      - key: WORKSPACE_DIR
+        value: /opt/render/project/src/data/workspace

@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "description": "Soul Map schema for bot personality/trait tracking",
+  "structure": {
+    "meta": {
+      "botId": "string (Discord ID or agent name)",
+      "botName": "string",
+      "lastUpdated": "ISO-8601 timestamp",
+      "extractedBy": "string (agent who extracted)"
+    },
+    "declared": {
+      "source": "SOUL.md + IDENTITY.md + USER.md",
+      "traits": ["array of core personality traits"],
+      "skills": {
+        "category": ["skill", "skill"]
+      },
+      "behaviors": ["observable patterns"],
+      "values": ["what matters"]
+    },
+    "observed": {
+      "source": "sessions_history + transcripts",
+      "lastTracked": "ISO-8601 timestamp",
+      "traits": {
+        "traitName": {
+          "score": "0.0-1.0 (confidence)",
+          "examples": ["quote or pattern"]
+        }
+      },
+      "deviations": [
+        {
+          "trait": "string",
+          "declaredScore": "0.0-1.0",
+          "observedScore": "0.0-1.0",
+          "drift": "0.0-1.0 (abs diff)",
+          "signal": "growth|anomaly|stable"
+        }
+      ]
+    },
+    "embeddings": {
+      "declared": "base embedding vector (TF-IDF or transformer)",
+      "observed": "observed behavior embedding",
+      "cosineSimilarity": "0.0-1.0"
+    }
+  }
+}
