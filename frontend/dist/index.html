@@ -527,6 +527,122 @@
       padding: 20px;
     }
 
+    /* Trait Similarity Section */
+    .similarity-section {
+      margin-top: 32px;
+    }
+
+    .similarity-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .similarity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .sim-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 18px;
+      transition: all 0.3s ease;
+    }
+
+    .sim-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .sim-pair {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .sim-bots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .sim-score {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 18px;
+      padding: 4px 12px;
+      border-radius: 8px;
+    }
+
+    .sim-score.high {
+      color: var(--accent-green);
+      background: rgba(34, 197, 94, 0.1);
+    }
+
+    .sim-score.medium {
+      color: var(--accent-yellow);
+      background: rgba(234, 179, 8, 0.1);
+    }
+
+    .sim-score.low {
+      color: var(--accent-pink);
+      background: rgba(236, 72, 153, 0.1);
+    }
+
+    .sim-bar-bg {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 3px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .sim-bar {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 1s ease;
+    }
+
+    .sim-bar.high { background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan)); }
+    .sim-bar.medium { background: linear-gradient(90deg, var(--accent-yellow), var(--accent-cyan)); }
+    .sim-bar.low { background: linear-gradient(90deg, var(--accent-pink), var(--accent-purple)); }
+
+    .sim-shared {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .sim-trait {
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 500;
+      background: rgba(6, 182, 212, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(6, 182, 212, 0.2);
+    }
+
+    .sim-unique {
+      background: rgba(168, 85, 247, 0.1);
+      color: var(--accent-purple);
+      border-color: rgba(168, 85, 247, 0.2);
+    }
+
     /* Animations */
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -654,6 +770,14 @@
       </div>
 
       <div class="detail-panel" id="detail-panel">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Trait Similarity Section -->
+    <div class="similarity-section fade-in">
+      <div class="similarity-title">🔗 Trait Similarities</div>
+      <div class="similarity-grid" id="similarity-grid">
         <!-- Populated by JS -->
       </div>
     </div>
@@ -866,6 +990,119 @@
     } catch (err) {
       console.log('WebSocket not available');
     }
+
+    // Trait Similarity Engine
+    function normalizeTraitName(t) {
+      // Extract the core keyword before parentheses, lowercase
+      return (typeof t === 'string' ? t.split('(')[0].trim() : String(t)).toLowerCase();
+    }
+
+    function computeSimilarities() {
+      const ids = Object.keys(soulsData);
+      const pairs = [];
+
+      // Build normalized trait sets per bot
+      const traitSets = {};
+      const traitKeywords = {};
+      ids.forEach(id => {
+        const soul = soulsData[id];
+        const rawTraits = soul.traits?.declared || soul.declared?.traits || [];
+        traitSets[id] = rawTraits.map(normalizeTraitName);
+        // Also extract individual keywords for fuzzy matching
+        traitKeywords[id] = new Set();
+        traitSets[id].forEach(t => {
+          t.split(/[\s,\-]+/).forEach(w => {
+            if (w.length > 3) traitKeywords[id].add(w);
+          });
+        });
+      });
+
+      // Compare all pairs
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const a = ids[i], b = ids[j];
+          const shared = [];
+          const setA = traitSets[a], setB = traitSets[b];
+
+          // Exact normalized match
+          setA.forEach(tA => {
+            setB.forEach(tB => {
+              if (tA === tB && !shared.includes(tA)) {
+                shared.push(tA);
+              }
+            });
+          });
+
+          // Keyword overlap (fuzzy)
+          const kwShared = [];
+          traitKeywords[a].forEach(kw => {
+            if (traitKeywords[b].has(kw) && !kwShared.includes(kw)) {
+              kwShared.push(kw);
+            }
+          });
+
+          // Score: exact matches worth 2, keyword overlaps worth 1
+          const maxTraits = Math.max(setA.length, setB.length);
+          const score = maxTraits > 0 
+            ? Math.min(1, (shared.length * 2 + kwShared.filter(k => !shared.some(s => s.includes(k))).length) / maxTraits) 
+            : 0;
+
+          pairs.push({
+            a, b,
+            score: Math.round(score * 100),
+            sharedTraits: shared,
+            sharedKeywords: kwShared.filter(k => !shared.some(s => s.includes(k))),
+            traitsA: setA,
+            traitsB: setB
+          });
+        }
+      }
+
+      // Sort by score descending
+      pairs.sort((a, b) => b.score - a.score);
+      return pairs;
+    }
+
+    function renderSimilarities() {
+      const grid = document.getElementById('similarity-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const pairs = computeSimilarities();
+      const emojis = { miniaipc: '🧠', razertw: '🔍', whitetwr: '❄️', whitetwrwsl: '🐧' };
+
+      pairs.forEach(pair => {
+        const level = pair.score >= 50 ? 'high' : pair.score >= 25 ? 'medium' : 'low';
+        const card = document.createElement('div');
+        card.className = 'sim-card';
+        card.innerHTML = `
+          <div class="sim-pair">
+            <div class="sim-bots">
+              ${emojis[pair.a] || '🤖'} ${pair.a} <span style="color:var(--text-muted)">⟷</span> ${emojis[pair.b] || '🤖'} ${pair.b}
+            </div>
+            <div class="sim-score ${level}">${pair.score}%</div>
+          </div>
+          <div class="sim-bar-bg">
+            <div class="sim-bar ${level}" style="width: ${pair.score}%"></div>
+          </div>
+          <div class="sim-shared">
+            ${pair.sharedTraits.map(t => `<span class="sim-trait">✓ ${t}</span>`).join('')}
+            ${pair.sharedKeywords.map(k => `<span class="sim-trait sim-unique">~ ${k}</span>`).join('')}
+            ${pair.sharedTraits.length === 0 && pair.sharedKeywords.length === 0 
+              ? '<span style="font-size:11px;color:var(--text-muted)">No shared traits</span>' 
+              : ''}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // Hook into render pipeline
+    const _origRenderSouls = renderSouls;
+    renderSouls = function() {
+      _origRenderSouls();
+      renderSimilarities();
+    };
 
     // Init
     fetchSouls();
