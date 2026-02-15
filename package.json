@@ -1,0 +1,19 @@
+{
+  "name": "soul-hub",
+  "version": "1.0.0",
+  "description": "Soul Maps Dashboard — Neural monitoring for AI agent swarms",
+  "main": "backend/server-prod.js",
+  "scripts": {
+    "start": "node backend/server-prod.js",
+    "dev": "node backend/server-prod.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "ws": "^8.19.0"
+  }
+}
