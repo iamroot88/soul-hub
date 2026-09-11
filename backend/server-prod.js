@@ -518,6 +518,11 @@ function deepMerge(target, source) {
   return result;
 }
 
+// Public privacy policy for Rootforge Speed Test (Play Console)
+app.get(['/privacy', '/privacy/', '/privacy/index.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, '../privacy-site/index.html'));
+});
+
 // Fallback to index.html for SPA routing
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api')) {
