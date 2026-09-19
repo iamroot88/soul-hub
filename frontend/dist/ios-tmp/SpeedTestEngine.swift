@@ -90,8 +90,8 @@ enum Stats {
 final class SpeedTestEngine {
     private let session: URLSession
     private let pingSamples = 8
-    private let downloadStreams = 3
-    private let uploadStreams = 2
+    private let downloadStreams = 1
+    private let uploadStreams = 1
     private let targetSeconds = 6.0
     private let warmupDownload: Int64 = 256 * 1024
     private let probeDownload: Int64 = 1 * 1024 * 1024
@@ -245,7 +245,7 @@ final class SpeedTestEngine {
         let probe = try await downloadOnce(probeDownload) { _, _ in }
         guard probe.bytes >= minBytes else { throw SpeedTestError.message("Download stalled after \(Stats.formatBytes(probe.bytes)).") }
         let probeMbps = max(probe.mbps, 1.0)
-        let target = clampBytes(Int64((probeMbps * 1_000_000.0 / 8.0) * targetSeconds), min: 2 * 1024 * 1024, max: 40 * 1024 * 1024)
+        let target = clampBytes(Int64((probeMbps * 1_000_000.0 / 8.0) * targetSeconds), min: 2 * 1024 * 1024, max: 12 * 1024 * 1024)
         let perStream = max(Int64(1 * 1024 * 1024), target / Int64(downloadStreams))
         let wallStart = DispatchTime.now().uptimeNanoseconds
         let streams: [Throughput] = try await withThrowingTaskGroup(of: Throughput.self) { group in
@@ -274,10 +274,15 @@ final class SpeedTestEngine {
     private func downloadOnce(_ bytes: Int64, onChunk: @escaping (Int64, UInt64) -> Void) async throws -> Throughput {
         var req = URLRequest(url: CloudflareEndpoints.downloadURL(bytes: bytes))
         req.httpMethod = "GET"
+        req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         let start = DispatchTime.now().uptimeNanoseconds
         let (bytesData, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw SpeedTestError.message("Download returned HTTP error")
+        guard let http = response as? HTTPURLResponse else {
+            throw SpeedTestError.message("Download returned a non-HTTP response.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SpeedTestError.message("Download returned HTTP \(http.statusCode)")
         }
         let loaded = Int64(bytesData.count)
         guard loaded > 0 else { throw SpeedTestError.message("Download returned zero bytes.") }
@@ -291,7 +296,7 @@ final class SpeedTestEngine {
         let probe = try await uploadOnce(probeUpload)
         guard probe.bytes >= minBytes else { throw SpeedTestError.message("Upload stalled after \(Stats.formatBytes(probe.bytes)).") }
         let probeMbps = max(probe.mbps, 0.5)
-        let target = clampBytes(Int64((probeMbps * 1_000_000.0 / 8.0) * targetSeconds), min: 1 * 1024 * 1024, max: 20 * 1024 * 1024)
+        let target = clampBytes(Int64((probeMbps * 1_000_000.0 / 8.0) * targetSeconds), min: 1 * 1024 * 1024, max: 8 * 1024 * 1024)
         let perStream = max(Int64(512 * 1024), target / Int64(uploadStreams))
         let wallStart = DispatchTime.now().uptimeNanoseconds
         let streams: [Throughput] = try await withThrowingTaskGroup(of: Throughput.self) { group in
@@ -324,8 +329,11 @@ final class SpeedTestEngine {
         let payload = Data(count: Int(bytes))
         let start = DispatchTime.now().uptimeNanoseconds
         let (_, response) = try await session.upload(for: req, from: payload)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw SpeedTestError.message("Upload returned HTTP error")
+        guard let http = response as? HTTPURLResponse else {
+            throw SpeedTestError.message("Upload returned a non-HTTP response.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SpeedTestError.message("Upload returned HTTP \(http.statusCode)")
         }
         let nanos = DispatchTime.now().uptimeNanoseconds - start
         return Throughput(bytes: bytes, nanos: nanos, mbps: Stats.mbps(bytes: bytes, nanos: nanos))
