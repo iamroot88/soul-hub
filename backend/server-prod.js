@@ -119,7 +119,12 @@ let connectedClients = [];
 const distPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(distPath, {
   maxAge: '1h',
-  etag: true
+  etag: true,
+  setHeaders(res, filePath) {
+    if (path.extname(filePath) === '.swift') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+  }
 }));
 
 // Parse soul maps
